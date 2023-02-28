@@ -1,0 +1,959 @@
+---
+title: "Classifying Lepidoptera Family and Genus by DNA Barcodes "
+author: \normalsize  Yihan Shi, Olivia Fan, Jeremiah Hodges, Chris Yang
+bibliography: reference.bib
+output: pdf_document
+header-includes:
+   - \usepackage{float}
+fontsize: 11pt
+geometry: left=0.6in, right=0.6in, top=0.6in, bottom=0.8in
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+\vspace{-0.5 cm}
+
+```{r setup, include=FALSE, results='hide', message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.align = 'center', fig.pos = "H",
+                      out.width = "60%")
+```
+
+```{r check-packages, cache = T}
+packages <- c('tidyverse','ape', 'dplyr', 'MASS','kmer','e1071','bioseq','nnet','glmnet','patchwork','pROC', 'ggplot2')
+install.packages(setdiff(packages, rownames(installed.packages())))
+```
+
+```{r load packages, include=FALSE}
+library(tidyverse)
+library(ape)
+library(dplyr)
+library(MASS)
+library(kmer) # Fast K-mer Counting and Clustering for Biological Sequence Analysis.
+library(e1071) # Naive Bayes
+library(bioseq)
+library(nnet)
+library(glmnet)
+library(patchwork)
+library(kableExtra)
+library(cowplot)
+library(caret) # nearzerovar
+library(pROC)
+library(ggplot2)
+```
+
+```{r readdata, show_col_types = FALSE, cache = T}
+test_sequences <- read_csv("Case_study2_Lepidoptera/test_sequences.csv", show_col_types = FALSE)
+Lepidoptera_library <- read_csv("Case_study2_Lepidoptera/Lepidoptera_library.csv", show_col_types = FALSE)
+# df <- Library_clean_3 <- read_csv("Library_clean.csv")
+```
+
+```{r cache = T}
+# format dna
+DNAmat <- str_split(Lepidoptera_library$DNA, pattern = "", simplify = T)
+bin <- as.DNAbin(DNAmat)
+bin <- solveAmbiguousBases(bin)
+
+#kmer counts
+kmers_1 <- kcount(x = bin, k = 1)
+
+kmers_2 <- kcount(x = bin, k = 2)
+
+kmers_3 <- kcount(x = bin, k = 3)
+
+kmers_4 <- kcount(x = bin, k = 4)
+
+kmers_5 <- kcount(x = bin, k = 5)
+
+kmers_6 <- kcount(x = bin, k = 6)
+
+kmer_data <- data.frame(cbind(kmers_1, kmers_2,kmers_3, kmers_4, kmers_5, kmers_6)) # 5460 total predictors
+```
+
+
+## 1 Introduction
+
+### 1.1 Background Information
+
+A great challenge in the field of modern biology is developing reliable
+and accurate technologies for the screening of DNA sequences. Over the
+past decade, a variety of DNA-based approaches have surfaced and been
+applied to multiple fields of investigation, from epidemiology to
+taxonomy [@pereira2008]. In particular, rapid species identification
+based on DNA sequencing has been fruitful in terms of identifying
+existing organisms in an ecosystem, diagnosis of pathogens, and
+discovery of new species. Genome information from short DNA barcode
+sequences, usually 400-800 base pairs, is often sufficient to identify
+almost all mixed samples on earth [@kress2008]. As comprehensive and
+powerful as it seems, DNA barcode classification faces the difficulties
+of identifying appropriate loci and addressing missing nucleotides,
+
+Our goal in this study is to develop strategies to address the above
+challenges and build effective prediction models based on DNA
+information. Based on a historical dataset of 40000 annotated DNA
+sequences with established annotations, we built several predictive
+classification models to annotate the sequence at the Family and Genus
+level. The main goals of this analysis include the following: predicting
+family and genus of Lepidoptera based on DNA barcode, determining the
+role of a whole DNA sequence in classification, and identifying
+important loci along sequences for classification.
+
+### 1.2 Data Description & Pre-Processing
+
+The original training data consists of 40000 annotated DNA sequences,
+where each observation represents an organism of known taxonomy. The
+test data consists of 7000 aligned DNA sequences, where each observation
+represents a single Finnish butterfly belonging to the order
+Lepidoptera.
+
+<!-- To address missing loci or alignment gaps in the data, we imputed -->
+
+<!-- ambiguous bases in DNA sequences by A, G, C, or T (where the -->
+
+<!-- replacements are done by random sampling using the frequencies of the -->
+
+<!-- observed compatible, non-ambiguous bases) to improve the accuracy and -->
+
+<!-- reliability of our sequence analysis. -->
+
+K-mers are defined to be short recurring elements in the genomes of all
+living species. These DNA sequence's subsequences of length k, prove to
+be an effective approach to preserve sequence information [@kmer]. Since
+these elements are conserved and diverged across species owing to their
+functional significance, kmers are ideal signatures for insect species
+identification [@kmer]. Therefore, we split each DNA sequence from the
+training data into k-mers, where $k$ is a fixed length between 1 and 6.
+After obtaining substrings of length $k$, we gathered the total count of
+each substring. In order to maximize the information obtained underlying
+the data generating mechanism, we combined the different k-mers and
+their respective count to obtain the covariates used in the model.
+
+### 1.3 Exploratory Data Analysis
+
+```{r code that make k-mers, cache = T}
+# K-mers
+# bin <- solveAmbiguousBases(bin)
+kmers4 <- kcount(x = bin, k = 4)
+kmers3 <- kcount(x = bin, k = 3)
+kmers5 <- kcount(x = bin, k = 5)
+df <- Library_clean_4 <- cbind(Lepidoptera_library, kmers3)
+df4 <- Library_clean_4 <- cbind(Lepidoptera_library, kmers4)
+df5 <- Library_clean_5 <- cbind(Lepidoptera_library, kmers5)
+df <- df %>% 
+  dplyr::select(-c(ID, DNA))
+df4 <- df4 %>% 
+  dplyr::select(-c(ID, DNA))
+df5 <- df5 %>% 
+  dplyr::select(-c(ID, DNA))
+```
+
+```{r kmer3, include = FALSE, cache=TRUE}
+# nearzero vectors
+leaveout3_nearzero <- nearZeroVar(x = kmers3, saveMetrics = TRUE)
+leaveout3_nearzero <- tibble::rownames_to_column(leaveout3_nearzero, "kmer")
+k3 <- ggplot(leaveout3_nearzero, aes(x = kmer, y = freqRatio)) +
+  geom_point() +
+  theme_minimal() +
+  labs(x = "64 kmers\n (names omitted)",
+       y = "frequency ratio") +
+  theme(axis.text.x=element_blank())
+# nearzero vectors
+leaveout4_nearzero <- nearZeroVar(x = kmers4, saveMetrics = TRUE)
+leaveout4_nearzero <- tibble::rownames_to_column(leaveout4_nearzero, "kmer")
+k4 <- ggplot(leaveout4_nearzero, aes(x = kmer, y = freqRatio)) +
+  geom_point() +
+  theme_minimal() +
+  labs(x = "256 kmers\n (names omitted)",
+       y = "frequency ratio") +
+  theme(axis.text.x=element_blank())
+# nearzero vectors
+leaveout5_nearzero <- nearZeroVar(x = kmers5, saveMetrics = TRUE)
+leaveout5_nearzero <- tibble::rownames_to_column(leaveout5_nearzero, "kmer")
+k5 <- ggplot(leaveout5_nearzero, aes(x = kmer, y = freqRatio)) +
+  geom_point() +
+  theme_minimal() +
+  labs(x = "1024 kmers\n (names omitted)",
+       y = "frequency ratio") +
+  theme(axis.text.x=element_blank())
+```
+
+```{r fig.cap = "Ratio of frequencies for the most common value over the second most common value of kmer", fig.width = "100%", cache = T}
+plot_grid(k3, k4, k5, ncol=3, align="v")
+```
+
+```{r fig.cap = "(a) Genus sample size for each family; (b) Percentage of genus sample count within each family", out.width = "70%", fig.width = "100%", cache=TRUE}
+family_counts <- Lepidoptera_library %>%
+ count(Family) %>%
+  arrange(desc(n)) 
+
+family_counts$Family <- factor(family_counts$Family, levels=c( "Geometridae",  "Noctuidae","Erebidae","Tortricidae","Nymphalidae","Crambidae","Gelechiidae","Oecophoridae", "Sphingidae","Saturniidae",  "Pyralidae","Hesperiidae"))
+
+family_plot <- ggplot(family_counts, aes(x = Family, y = n)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  # theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
+  labs(y="number of samples") +
+  coord_flip()
+
+genus <- Lepidoptera_library %>%
+  group_by(Family, Genus) %>%
+  count()
+genus_group <- genus %>% 
+  group_by(Family) %>% 
+  mutate(count = case_when(n == 1 ~ "1",
+                           n > 1 & n <= 50 ~ "2~50",
+                           n > 50 & n <= 100 ~ "50~100",
+                           n > 100 ~ "> 100"))
+genus_group <- genus_group %>% 
+  group_by(Family) %>% 
+  mutate(percent = n/sum(n))
+
+genus_plot <- ggplot(genus_group, aes(x = Family)) + 
+  geom_bar(aes(fill = count), position = "fill") + 
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  labs(y = "percentage")
+
+family_plot + genus_plot
+```
+
+The number of distinct k-mers grow exponentially as their length
+increase ($4^{n}$ where n is the number of nucleotides). While we want
+to maximally incorporate DNA information by including k-mers of various
+lengths as predictors, many k-mers have similar counts across 12
+families and provide little information for classification. We decided
+that if a k-mer has very few unique values relative to the number of
+samples and if the ratio of the frequency of the most common value to
+the frequency of the second most common value is large, the k-mer should
+be excluded due to its low variance. The cutoff for the percentage of
+distinct values out of the number of total samples is set at 0.1, and
+the cutoff for the ratio of frequency is set at 95/5. If a kmer's
+frequency of its most prevalent value over the second most frequent
+value is above 95/5 and its percentage of unique values is below 10%, it
+is flagged as a near zero variance predictor to be excluded. A few
+k-mers have relatively large frequency ratio within their groups (Fig.
+1) and low percent of unique values (not shown) for exclusion. Different
+cutoff values will be tested to examine important kmers and the model's
+performance in sensitivity analysis.
+
+To classify Genus within each Family of Lepidoptera, we first explored
+the distribution of sample count of each Genus, which ranges from 1 to
+432. Most of the Genus has 2\~50 sample counts, and a few has more than
+50. However, almost all families have at least 25% of the genus with
+only 1 sample. Various methods will be explored in the following
+sections to address this issue.
+
+Based on the distribution of the sample sizes across families, we see
+that the families are inherently unbalanced, with Geometridae the family
+having the most number of samples having over 4 times the sample size of
+families such as Sphingidae, Pyralidae and Hesperiidae. This inbalance
+could translate later on to the differences in predictive confidence in
+the family model due to the disparaging levels of information.
+
+## 2 Methodology
+
+### 2.0.1 Model Selection
+
+Prior to fitting the model, we conducted model selection through
+identification of near zero variance predictors, which either (1) have
+one unique value, or (2) have very few unique values relative to the
+number of samples and the ratio of the frequency of the most common
+value to the frequency of the second most common value is large. We
+removed these variables to achieve improved model performance because
+predictors with low variance have little or no predictive power and do
+not influence the outcome classification significantly, which allowed us
+to reduce the number of features from 5460 to 2352.
+
+### 2.1 Predict Lepidoptera families
+
+```{r,  cache = TRUE, include=FALSE, echo=FALSE, cache = T}
+Library_clean_genus <- readRDS("raw_genus_data.rds")
+Library_clean_family <- readRDS("raw_family_data.rds")
+```
+
+In order to achieve maximum performance on the multiclass classification
+problem, using the counts of the combined kmers ($k=1,2,3,4,5$) as
+predictor variables, we fitted four models and assessed their accuracy
+on test set via a 80:20 split between training and test data.
+
+|    LDA    |  QDA  | Naive Bayes | KNN (k = $\sqrt{N}$/2 = 89) |
+|:---------:|:-----:|:-----------:|:---------------------------:|
+| **94.4%** | 93.0% |    79.8%    |            82.4%            |
+
+: Model accuracy comparison
+
+Before fitting the LDA model, we applied Principal Component Analysis
+(PCA) on the features (with threshold of 95%) in order to (1) further
+reduce the dimensionality, (2) more importantly, to avoid applying LDA
+directly on the count data since applying PCA before LDA ensures that we
+remove the effects of overdispersion. The accuracy rates obtained on the
+test set reveals that LDA proves to be the optimal model. To further
+refine this model and find the optimal interval for the kmers, we
+trained the model on combined kmers from 1 through 5, from 1 through 6
+and from 1 to 7 respectively and obtained the following out-of-sample
+accuracy rates which we used as the model selection criteria:
+
+|      Kmer       | Accuracy  | Total predictors |
+|:---------------:|:---------:|:----------------:|
+|   k=1,2,...,5   |   94.4%   |       1364       |
+| **k=1,2,...,6** | **95.6%** |     **5460**     |
+|   k=1,2,...,7   |   95.7%   |      21844       |
+
+: LDA Results
+
+Although the LDA model improves by a whole percent from using the 1-5 to
+1-6 kmers as features, it does not continue to improve significantly
+beyond the 1-6 kmers. Adding data from 7 kmers for the model to train on
+only improves the accuracy by 95.7%. Therefore, we decide to train our
+final model using 1-6 kmers, since it strikes an optimal balance between
+accuracy and computational efficiency. Ultimately we derived an
+in-sample accuracy of 96.8%, and an out-of-sample accuracy of 95.6% on
+this final LDA model using 1-6 kmers.
+
+|                          | 10   | 40   | 80   |
+|--------------------------|------|------|------|
+| Accuracy of Family Model | 96.2 | 96.3 | **96.4** |
+
+: Accuracy of various frequency cut values
+
+We additionally tuned the parameter frequency cut for the
+nearZeroVariance function. The parameter represents the cutoff for the
+ratio of the most common value to the second most common value. Larger
+values keep more columns, whereas smaller values cut out more columns.
+The default value is 19. From the table we can see changing the value
+from 19 to 80 results in an increase of accuracy of a mere 0.1% from the
+un-tuned final model. Therefore, we decided to keep this final LDA model using 1-6 kmers with freqCut of 19.
+
+```{r, eval=FALSE, warning=FALSE, include = FALSE}
+# TRAINING ACCURACY FOR FAMILY
+final_lda_family_models<- readRDS("final_lda_family_model.rds")
+family_model_training_data<- readRDS("family_model_training_data.rds")
+mean(predict(final_lda_family_models)==family_model_training_data$Family)
+```
+
+Furthermore, we tuned the PCA threshold hyperparameter to an optimal
+0.999, which improved the accuracy from 95.6% to 96.3%. We accessed our
+data imputation approach with the missing loci, and found that applying
+the ambiguous base imputation approach improved the accuracy by 0.1%.
+Albeit not significant, our imputation approach proves a valid approach
+without extrapolation or bias on the existing data.
+
+```{r, cache = TRUE}
+#load model and testing data
+family_test_labels <- readRDS("family_model_test_labels.rds")
+family_test_data <- readRDS("family_model_test_data.rds")
+family_lda_model <- readRDS("final_lda_family_model.rds")
+family_model_predictors <- readRDS("family_model_predictors.rds")
+family_test_data <- subset(family_test_data,select = names(family_test_data) %in% family_model_predictors)
+```
+
+```{r, cache = TRUE}
+#find lda model predictions
+lda_model_predictions <- predict(family_lda_model, newdata = family_test_data)
+```
+
+### 2.2 Predict Lepidoptera genusus
+
+Due to the effective performance of the family model, we continued to
+use LDA as our final model to predict genuses, after tuning the PCA
+threshold (the minimum level of variance or information that must be
+retained when reducing the dimensionality) for optimal accuracy. Similar
+to the family model, we used kmers where k equal 1 through 6 as
+predictors, after removing the near zero variance predictors, then we
+used PCA to reduce dimesionality as well as the dispersion effect on the
+count data. For each of the 12 families, we created the genus predictor
+comparing the performance of LDA at various PCA thresholds via 80-20%
+split and obtained the following accuracy rates. The bolded accuracy
+represents the highest accuracy for the given genus, therefore the final
+model or our choice for the genus.
+
+|  Threshold   |   0.75    |   0.90    |   0.95    |   0.99    |
+|:------------:|:---------:|:---------:|:---------:|:---------:|
+|  Noctuidae   |   90.8%   |   91.5%   |   92.0%   | **92.1%** |
+| Geometridae  |   80.0%   |   80.9%   |   81.9%   | **82.2%** |
+| Gelechiidae  |   87.8%   |   92.5%   | **93.2%** |   92.0%   |
+|  Sphingidae  |   90.5%   | **91.7%** |   91.7%   |   91.7%   |
+| Tortricidae  |   85.6%   |   88.1%   | **89.6%** |   88.7%   |
+|  Crambidae   |   77.4%   |   80.0%   |   80.5%   | **81.7%** |
+|   Erebidae   |   81.9%   | **82.4%** |   82.2%   |   81.4%   |
+| Oecophoridae |   78.3%   | **81.0%** |   80.8%   |   76.2%   |
+| Hesperiidae  |   84.5%   |   85.5%   | **85.9%** |   83.1%   |
+|  Pyralidae   |   78.3%   |   80.0%   |   79.7%   | **80.7%** |
+| Nymphalidae  |   80.0%   | **89.1%** |   88.5%   |   88.7%   |
+| Saturniidae  | **93.4%** |   92.7%   |   92.2%   |   91.9%   |
+
+: Out-of-sample Accuracy for LDA under different PCA thresholds
+
+We also assessed the performance of the in-sample accuracy through the
+training data:
+
+```{r fig.cap = "In-sample accuracy for LDA family model", out.width= "50%", fig.width = "100%", cache=TRUE}
+# Sample data
+percentages <- c(0.982, 0.961, 0.999, 0.996, 0.991, 0.996, 0.976, 0.98,1.0, 0.997, 0.987, 0.994)
+labels <- c("Noctuidae", "Geometridae", "Gelechiidae", "Sphingidae", "Tortricidae", "Crambidae","Erebidae","Oecophoridae","Hesperiidae","Pyralidae","Nymphalidae", "Saturniidae")
+
+df <- data.frame(percentages = percentages, labels = labels)
+#sorted df
+df$labels <- factor(df$labels, levels = df$labels[order(df$percentages)])
+
+
+# Create bar plot with sorted data
+ggplot(df, aes(x = labels, y = percentages, label = scales::percent(percentages))) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.7, fill = "lightblue") +
+  geom_text(position = position_dodge(width = 0.9), vjust = -0.5, size = 3) + 
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Family", y = "Percentages") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5))+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+```
+
+<!-- Commented out and changed to bar plot -->
+
+<!-- |              | In-sample Accuracy | -->
+
+<!-- |--------------|--------------------| -->
+
+<!-- | Noctuidae    | 98.2%              | -->
+
+<!-- | Geometridae  | 96.1%              | -->
+
+<!-- | Gelechiidae  | 99.9%              | -->
+
+<!-- | Sphingidae   | 99.6%              | -->
+
+<!-- | Tortricidae  | 99.1%              | -->
+
+<!-- | Crambidae    | 99.6%              | -->
+
+<!-- | Erebidae     | 97.6%              | -->
+
+<!-- | Oecophoridae | 98.0%              | -->
+
+<!-- | Hesperiidae  | 100.0%             | -->
+
+<!-- | Pyralidae    | 99.7%              | -->
+
+<!-- | Nymphalidae  | 98.7%              | -->
+
+<!-- | Saturniidae  | 99.4%              | -->
+
+<!-- : In-sample/training accuracy for LDA model -->
+
+```{r,  cache = TRUE, include=FALSE, echo=FALSE, eval=FALSE}
+############ Noctuidae ################
+#load data
+noctuidae_predictors <- readRDS("noctuidae_predictors.rds")
+noctuidae_lda_model <- readRDS("noctuidae_model.rds")
+noctuidae_test_set <- readRDS("noctuidae_model_test_data")
+noctuidae_test_genus <- readRDS("noctuidae_model_test_labels")
+
+noctuidae_test_set <- subset(noctuidae_test_set,select = names(noctuidae_test_set) %in% noctuidae_predictors)
+
+#Noctuidae LDA model predictions
+noctuidae_lda_model_predictions <- predict(noctuidae_lda_model, newdata = noctuidae_test_set)
+
+# ROC
+mean(noctuidae_lda_model_predictions == noctuidae_test_genus)
+roc_curve <- multiclass.roc(as.numeric(factor(noctuidae_test_genus)), as.numeric(factor(noctuidae_lda_model_predictions)))
+# Plot the ROC curve
+plot(roc_curve, main = "ROC curve for LDA model", col = "blue", lwd = 2)
+lines(x = c(0,1), y = c(0,1), lty = 2, col = "gray", lwd = 1.5)
+
+# Compute the micro-average AUC
+micro_auc <- auc(roc_curve)
+
+# Compute the macro-average AUC
+macro_auc <- auc(roc_curve, algorithm = 2)
+
+# Print the micro-average and macro-average AUC values
+cat("Micro-average AUC: ", micro_auc, "\n")
+cat("Macro-average AUC: ", macro_auc, "\n")
+
+########### Geometridae ################## 
+geometridae_predictors <- readRDS("geometridae_predictors.rds")
+geometridae_lda_model <- readRDS("geometridae_model.rds")
+geometridae_test_set <- readRDS("geometridae_model_test_data.rds")
+geometridae_test_genus <- readRDS("geometridae_model_test_labels.rds")
+
+geometridae_test_set <- subset(geometridae_test_set,select = names(geometridae_test_set) %in% geometridae_predictors)
+
+#geometridae LDA model predictions
+
+geometridae_lda_model_predictions <- predict(geometridae_lda_model, newdata = geometridae_test_set)
+
+# ROC
+mean(geometridae_lda_model_predictions == geometridae_test_genus)
+roc_curve <- multiclass.roc(as.numeric(factor(geometridae_test_genus)), as.numeric(factor(geometridae_lda_model_predictions)))
+# Compute the micro-average AUC
+micro_auc <- auc(roc_curve)
+# Compute the macro-average AUC
+macro_auc <- auc(roc_curve, algorithm = 2)
+# Print the micro-average and macro-average AUC values
+cat("Micro-average AUC: ", micro_auc, "\n")
+cat("Macro-average AUC: ", macro_auc, "\n")
+
+#### Gelechiidae #############
+#load data
+gelechiidae_predictors <- readRDS("gelechiidae_predictors.rds")
+gelechiidae_lda_model <- readRDS("gelechiidae_model.rds")
+gelechiidae_test_set <- readRDS("gelechiidae_model_test_data.rds")
+gelechiidae_test_genus <- readRDS("gelechiidae_model_test_labels.rds")
+
+gelechiidae_test_set <- subset(gelechiidae_test_set,select = names(gelechiidae_test_set) %in% gelechiidae_predictors)
+#gelechiidae model predictions
+gelechiidae_lda_model_predictions <- predict(gelechiidae_lda_model, newdata = gelechiidae_test_set)
+
+mean(gelechiidae_lda_model_predictions==gelechiidae_test_genus)
+roc_curve <- multiclass.roc(as.numeric(factor(gelechiidae_test_genus)), as.numeric(factor(gelechiidae_lda_model_predictions)))
+# Compute the micro-average AUC
+micro_auc <- auc(roc_curve)
+# Compute the macro-average AUC
+macro_auc <- auc(roc_curve, algorithm = 2)
+# Print the micro-average and macro-average AUC values
+cat("Micro-average AUC: ", micro_auc, "\n")
+cat("Macro-average AUC: ", macro_auc, "\n")
+
+#### Sphingidae #############
+
+#load data
+sphingidae_predictors <- readRDS("sphingidae_predictors.rds")
+sphingidae_lda_model <- readRDS("sphingidae_model.rds")
+sphingidae_test_set <- readRDS("sphingidae_model_test_data.rds")
+sphingidae_test_genus <- readRDS("sphingidaemodel_test_labels.rds")
+
+sphingidae_test_set <- subset(sphingidae_test_set,select = names(sphingidae_test_set) %in% sphingidae_predictors)
+
+#sphingidae model predictions
+sphingidae_lda_model_predictions <- predict(sphingidae_lda_model, newdata = sphingidae_test_set)
+mean(sphingidae_lda_model_predictions== sphingidae_test_genus)
+
+roc_curve <- multiclass.roc(as.numeric(factor(sphingidae_test_genus)), as.numeric(factor(sphingidae_lda_model_predictions)))
+# Compute the micro-average AUC
+micro_auc <- auc(roc_curve)
+# Compute the macro-average AUC
+macro_auc <- auc(roc_curve, algorithm = 2)
+# Print the micro-average and macro-average AUC values
+cat("Micro-average AUC: ", micro_auc, "\n")
+cat("Macro-average AUC: ", macro_auc, "\n")
+
+AUC: 0.9695256
+
+#### Tortricidae ##################
+
+#load data
+tortricidae_predictors <- readRDS("sphingidae_predictors.rds")
+sphingidae_lda_model <- readRDS("sphingidae_model.rds")
+sphingidae_test_set <- readRDS("sphingidae_model_test_data.rds")
+sphingidae_test_genus <- readRDS("sphingidaemodel_test_labels.rds")
+
+sphingidae_test_set <- subset(sphingidae_test_set,select = names(sphingidae_test_set) %in% sphingidae_predictors)
+
+#sphingidae model predictions
+sphingidae_lda_model_predictions <- predict(sphingidae_lda_model, newdata = sphingidae_test_set)
+
+roc_curve <- multiclass.roc(as.numeric(factor(tortricidae_test_genus)), as.numeric(factor(tortricidae_lda_model_predictions)))
+# Compute the micro-average AUC
+micro_auc <- auc(roc_curve)
+# Compute the macro-average AUC
+macro_auc <- auc(roc_curve, algorithm = 2)
+# Print the micro-average and macro-average AUC values
+cat("Micro-average AUC: ", micro_auc, "\n")
+cat("Macro-average AUC: ", macro_auc, "\n")
+
+#### Crambidae ##########
+
+set.seed(10)
+
+crambidae_data <- genus_data[genus_data$Family == "Crambidae",]
+low_variance_crambidae<- nearZeroVar(x = crambidae_data )
+crambidae_data <- crambidae_data[,-low_variance_crambidae]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(crambidae_data ), replace=TRUE, prob=c(0.8,0.2))
+
+crambidae_train_set  <- crambidae_data[sample, ]
+crambidae_test_set  <- crambidae_data[!sample, ]
+train_crambidae_genuses <- unique(crambidae_train_set$Genus)
+test_crambidae_genuses <- unique(crambidae_test_set$Genus)
+crambidae_test_diff <- setdiff(test_crambidae_genuses, train_crambidae_genuses)
+
+
+crambidae_test_genus <- crambidae_test_set$Genus
+crambidae_test_set  <- subset(crambidae_test_set, select = -c(Genus) )
+#Crambidae LDA model
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.95))
+
+crambidae_lda_model <- train(Genus ~., data = crambidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy",
+               preProcess=c("pca")
+               )
+
+crambidae_lda_model_predictions <- predict(crambidae_lda_model, newdata = crambidae_test_set)
+
+# mean(crambidae_lda_model_predictions== crambidae_test_genus)
+# saveRDS(crambidae_lda_model, "crambidae_lda_model.rds", compress="gzip")
+
+roc_curve <- multiclass.roc(as.numeric(factor(crambidae_test_genus)), as.numeric(factor(crambidae_lda_model_predictions)))
+# Compute the micro-average AUC
+micro_auc <- auc(roc_curve)
+# Compute the macro-average AUC
+macro_auc <- auc(roc_curve, algorithm = 2)
+# Print the micro-average and macro-average AUC values
+cat("Micro-average AUC: ", micro_auc, "\n")
+cat("Macro-average AUC: ", macro_auc, "\n")
+
+
+######### Oecophoridae #######
+
+#load data
+oecophoridae_predictors <- readRDS("oecophoridae_predictors.rds")
+oecophoridae_lda_model <- readRDS("oecophoridae_model.rds")
+oecophoridae_test_set <- readRDS("oecophoridae_model_test_data.rds")
+oecophoridae_test_genus <- readRDS("oecophoridae_model_test_labels.rds")
+
+hesperiidae_test_set <- subset(hesperiidae_test_set,select = names(hesperiidae_test_set) %in% hesperiidae_predictors)
+
+#hesperiidae model predictions
+hesperiidae_lda_model_predictions <- predict(hesperiidae_lda_model, newdata = hesperiidae_test_set)
+
+
+mean(hesperiidae_lda_model_predictions==hesperiidae_test_genus)
+
+#### Hesperiidae #########
+
+#load data
+hesperiidae_predictors <- readRDS("hesperiidae_predictors.rds")
+hesperiidae_lda_model <- readRDS("hesperiidae_model.rds")
+hesperiidae_test_set <- readRDS("hesperiidae_model_test_data.rds")
+hesperiidae_test_genus <- readRDS("hesperiidae_model_test_labels.rds")
+
+hesperiidae_test_set <- subset(hesperiidae_test_set,select = names(hesperiidae_test_set) %in% hesperiidae_predictors)
+
+#hesperiidae model predictions
+hesperiidae_lda_model_predictions <- predict(hesperiidae_lda_model, newdata = hesperiidae_test_set)
+
+
+mean(hesperiidae_lda_model_predictions==hesperiidae_test_genus)
+
+#### Nymphalidae #############
+
+#load data
+nymphalidae_predictors <- readRDS("nymphalidae_predictors.rds")
+nymphalidae_lda_model <- readRDS("nymphalidae_model.rds")
+nymphalidae_test_set <- readRDS("nymphalidae_model_test_data.rds")
+nymphalidae_test_genus <- readRDS("nymphalidae_model_test_labels.rds")
+
+nymphalidae_test_set <- subset(nymphalidae_test_set,select = names(nymphalidae_test_set) %in% nymphalidae_predictors)
+
+#gelechiidae model predictions
+nymphalidae_lda_model_predictions <- predict(nymphalidae_lda_model, newdata = nymphalidae_test_set)
+
+mean(nymphalidae_lda_model_predictions==nymphalidae_test_genus)
+
+#### Saturniidae ############
+
+#load data
+saturniidae_predictors <- readRDS("saturniidae_predictors.rds")
+saturniidae_lda_model <- readRDS("saturniidae_model.rds")
+saturniidae_test_set <- readRDS("saturniidae_model_test_data.rds")
+saturniidae_test_genus <- readRDS("saturniidae_model_test_labels.rds")
+
+gelechiidae_test_set <- subset(saturniidae_test_set,select = names(saturniidae_test_set) %in% gelechiidae_predictors)
+
+#gelechiidae model predictions
+saturniidae_lda_model_predictions <- predict(saturniidae_lda_model, newdata = saturniidae_test_set)
+
+mean(saturniidae_lda_model_predictions==saturniidae_test_genus)
+```
+
+### 2.3 Predict New Species
+
+We predicted new species by setting a threshold of 0.8; that is, (1) we
+classify a DNA sequence as new family if the predicted probability from
+the family model is below 0.8, and (2) for a sequence predicted from an
+observed family (if the predicted probability from the family model is
+above 0.8), we classify it as a new genus if the predicted probability
+from the corresponding genus model is below 0.8. As a result, we classified 138 out of 7000 samples in the unlabeled data as
+new species. We found 12 families and another new family category, along with 1606 genera along with the new genus category (Figure 6(a)).
+
+```{r eval = FALSE}
+final_predictions%>%select(Family)%>%unique()
+final_predictions%>%select(Genus)%>%unique()
+```
+
+### 2.4 Model Assumptions
+
+To ensure appropriateness of the LDA model, we assessed conditions for
+independence and normality. The individual sequences are independent,
+therefore the samples meet LDA's assumptions that the features are
+independent of one another. Additionally, the principal components are
+normalized; therefore the data meets the LDA assumption that the
+distribution of each feature within each class is normal.
+
+## 3 Results
+
+```{r, fig.cap = "Confusion matrix for family model", out.width = "50%", out.height = "80%", cache = TRUE}
+#confusion plot
+matrix <-confusionMatrix(as.factor(lda_model_predictions), as.factor(family_test_labels),dnn = c("Prediction", "Reference"))
+confusion_data <- as.data.frame(matrix$table)
+ggplot(confusion_data, aes(Prediction,Reference, fill= Freq)) +
+      geom_tile() + geom_text(aes(label=Freq)) +
+       scale_fill_gradient(low="white", high="purple") +
+        labs(x = "Reference",y = "Prediction") +
+        theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+We assessed the performance of our family model using a confusion
+matrix, through which we discover that Erebidae, Noctuidae and
+Geometridae are most frequently classified correctly, mainly due to
+their large sample sizes which provide ample information to the model.
+On other other hand, there is 75 samples, a noticeable number of
+observations predicted to be Noctuidae when it is actually Erebidae.
+Similarly, there is 27 samples predicted to be Erebidae when it is
+actually Noctuidae. A literature search suggests that these two families
+are indeed similar to each other; in fact, some subfamilies of the
+Noctuidae, such as the Herminiinae, were moved as a whole to Erebidae
+due to their similarities [@families]. This corroborates our results
+that these two families tend to be confused by the model, despite high
+performance on other families.
+
+According to Table 2 above, the genus models have generally moderate to
+strong performance, but vary in terms of out-of-sample accuracy. For
+example, Pyralidae has significantly lower accuracy at 80.7%, which
+could be mainly explained by the presence of singletons within the genus
+according to the EDA plot (Fig. 2b). Simiarly, other families with large
+presence of singletons such as Crambidae, Erebidae and Geometridae all
+have out-of-sample accuracies at around 80%, which suggests that the
+influence that singletons have in undermining prediction accuracy.
+
+Furthermore, due to the nature of the multi-class classification
+problem, we used the macro-average measure to assess the performance of
+our final models. Macro-average AUC is computed by first calculating the
+AUC for each individual class, and then taking the average of these AUC
+values, allowing us to evaluate the performance of a classifier on each
+class separately, and avoid the issue of class imbalance affecting the
+overall score.
+
+| Family       | AUC    |
+|--------------|--------|
+| Noctuidae    | 0.9689 |
+| Geometridae  | 0.9689 |
+| Gelechiidae  | 0.9809 |
+| Sphingidae   | 0.9695 |
+| Tortricidae  | 0.9609 |
+| Crambidae    | 0.9460 |
+| Erebidae     | 0.9632 |
+| Oecophoridae | 0.9533 |
+| Hesperiidae  | 0.9755 |
+| Pyralidae    | 0.9760 |
+| Nymphalidae  | 0.9658 |
+| Saturniidae  | 0.9776 |
+
+: Macro AUC Value for Genus Models
+
+Based on the reported macro AUC values, we observe that the family
+classification models have strong performance in terms of their
+abilities to differentiate between the classes. Most of the family
+models have high AUC values above 0.95, which suggests that the models
+are performing well in distinguishing between the classes.
+
+We graphed the distribution of the predicted probabilities for the genus models over correct and incorrect classifications separately. As shown in the histogram below showing the predicted probabilities for correct predictions (left), most of the genuses have predicted probabilities near to 1 without noticeable deviance. Therefore, we are fairly confident in our predictions, even though a minority of genuses such as Erebidae, Tortricidae, and Pyralidae have a
+scant amount of probabilities in the lower spectrum mainly due to the
+small sample size. As shown in the predicted probabilities for incorrect predictions (right), genus with small sample sizes such as Saturniidae have noticeably lower probabilities and thus lower confidence.
+
+```{r out.width = "100%", out.height = "80%", cache=TRUE}
+final_lda_family_models<- readRDS("final_lda_family_model.rds")
+family_model_test_data <- readRDS("family_model_test_data.rds")
+family_model_test_labels<- readRDS("family_model_test_labels.rds")
+final_lda_family_models.prob <- predict(final_lda_family_models, newdata= family_model_test_data, type = "prob")
+final_lda_family_models.names <- predict(final_lda_family_models, newdata = family_model_test_data)
+
+#check predictions
+family_prob <- apply(final_lda_family_models.prob, 1, max, na.rm=TRUE)
+family_class_and_prob <- cbind(as.data.frame(final_lda_family_models.names), 
+                                              family_prob)
+
+family_class_and_prob<-family_class_and_prob%>%
+  rename(family=final_lda_family_models.names)
+
+family_class_and_prob<-cbind(family_class_and_prob,family_model_test_labels)%>%
+  rename(true_label=family_model_test_labels)
+
+correct_probabilities<-family_class_and_prob%>%
+  filter(family==true_label)
+
+incorrect_probabilities<-family_class_and_prob%>%
+  filter(family!=true_label)
+
+p1<-ggplot(correct_probabilities, aes(x = family_prob)) +
+  geom_histogram(binwidth = 0.1) +
+  theme_minimal() + 
+  facet_wrap(~ family)+
+  labs(x = "Predicted Probability (Correct)")+
+  theme(strip.text.x = element_text(size =6))
+
+p2<-ggplot(incorrect_probabilities, aes(x = family_prob)) +
+  geom_histogram(binwidth = 0.1) +
+  theme_minimal() + 
+  facet_wrap(~ true_label)+
+  labs(x = "Predicted Probability (Incorrect)")+
+  theme(strip.text.x = element_text(size = 6))
+```
+
+
+```{r fig.cap = "Predicted probabilities for family model", out.width = "60%", out.height = "80%"}
+p1+p2
+```
+
+```{r, out.width = "40%", out.height = "40%"}
+final_predictions <- read_csv("./final_predictions.csv", show_col_types = FALSE)
+
+final_predictions$Family[final_predictions$Family == "New_Family"] <- "New Family"
+
+predictions<-table(final_predictions$Family)
+predictions<-as.data.frame(predictions)%>%
+  rename(Family=Var1)%>%
+  rename(count=Freq)
+# calculate the percentage of each family count
+predictions$percent <- predictions$count / sum(predictions$count) * 100
+
+pie <- ggplot(predictions, aes(x = "", y = count, fill = Family)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar(theta = "y", start = -pi/1.5, direction = 1) +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  scale_fill_hue() +
+  geom_text(aes(label = paste0(round(percent), "%")),
+            position = position_stack(vjust = 0.7), size=3) +
+  theme_void() + 
+  theme(legend.key.size = unit(0.2, "cm"), 
+          legend.position = "left"
+        ) 
+
+```
+
+
+```{r cache = T}
+train_set <- readRDS("family_model_training_data.rds")
+low_training_variance <- nearZeroVar(x = train_set[-1,], saveMetrics = TRUE)
+
+top10 <- low_training_variance %>% 
+  arrange(desc(freqRatio), desc(percentUnique)) %>% 
+  slice(1:15)
+top10 <- tibble::rownames_to_column(top10, "kmer")
+
+# most variable kmers
+top10_kmer <- top10$kmer
+df <- data.frame(cbind(Lepidoptera_library,kmer_data))
+
+# most variable kmer positions
+
+n <- 15
+# or pre-allocate for slightly more efficiency
+positions = vector("list", length = n)
+
+for (i in 1:n) {
+  a <- unlist(gregexpr(top10_kmer[i], df$DNA))
+  pos <- unique(a[a!=-1])
+  dat <- data.frame(matrix(nrow = length(pos), ncol = 2))
+  
+  
+  for (j in 1:length(pos)) {
+    dat$kmer[j] <- top10_kmer[i]
+    dat$position[j] <- pos[j]
+  }
+  positions[[i]] <- dat 
+}
+
+binded_df <- do.call(rbind, positions)
+final_pos <- merge(binded_df, top10, by = "kmer")
+```
+
+
+```{r}
+loci <- ggplot(data = final_pos, aes(x = freqRatio, y = position, color = kmer)) + 
+  geom_point(size = 0.7) +
+  scale_color_viridis_d() +
+  labs(x = "frequency ratio", y = "location in DNA") +
+  theme(legend.key.size = unit(0.3, 'cm'))
+```
+
+```{r fig.cap = "(a) Family composition of unlabelled data; (b) Loci of the 15 most varied kmers"}
+pie + loci
+```
+
+
+We investigated the locations where the 15 most varied (defined by high frequency ratio and percentage of unique values) kmers are located in whole DNA sequences. 12 important kmers are 6-nucleotide long, and 3 important kmers are 5-nucleotide long. Although it is difficult to inspect which specific location is important because the loci of these kmers are spread throughout whole DNA sequence, loci 400-600 have the most instances of important kmers (Fig. 6b). 
+
+## 4 Conclusion
+
+### Research Question
+
+In this study, we explored different strategies for classifying Lepidoptera families and their corresponding genuses. During the data processing stage, we found that extracting Kmers of different lengths from whole DNA sequences is an effective method to compensate for missing nucleotides at various loci. Among 4 classification models — Linear Discriminant Analysis (LDA), Quadratic Discriminant Analysis (QDA), Naive Bayes, and K-nearest neighbors, the LDA model with kmers of length 1-6 as predictors presents the highest out-of-sample accuracy of 95.6% to predict 12 families and corresponding genuses. Our confidence that each family/genus belongs to its predicted category is also high (Fig. 5). Therefore, as long as the local sequence patterns can be extracted, neither the whole DNA sequence nor any individual loci are important for classification. At the family level, the former is supported by the evidence that the number of features (kmers) is reduced greatly while still producing a high accuracy and strong classification ability (AUC). The latter is validated by our kmer approach which obtained such high out-of-sample accuracy despite compressing information about locations in the sequences. While individual loci can be difficult to identify, loci 400-600 contain the highest number of important kmers. Kmers is sufficient to capture local patterns that are functionally important [@loci].
+
+### Sensitivity analysis
+
+We varied the number and lengths of kmers used as predictors in the LDA
+model to compare how sensitive the family prediction accuracy is to
+different numbers and lengths of kmers (Table 1). Although the number of
+predictors ranges from 1364 to 21844, the family prediction accuracy did
+not fluctuate much. We observe that while using k from 1 through 6
+versus from 1 through 5 improves accuracy from 94.4% to 95.6%, on the
+other hand, increasing to k from 1 through 7 improves accuracy by a mere
+0.1% and is computational efficient. Some genus predictions are
+sensitive to Principle component analysis thresholds such as
+Oecophoridae, Gelechiidae, and Crambidae, while others are more
+consistent regardless of the thresholds (Table 2). In genus
+classification, we applied different PCA thresholds on LDA model to
+compare how they affect the prediction accuracy.
+
+|              | 10    | 40    | 80     |
+|--------------|-------|-------|--------|
+| Noctuidae    | 98.8% | **98.9%** | 98.6%  |
+| Geometridae  | 81.7% | **82.3%** |**82.3%**  |
+| Gelechiidae  | 92.7% | 93.2% | 93.2%  |
+| Sphingidae   | 92.0% | 92.0% | **92.9%**  |
+| Tortricidae  | 88.0% | 88.8% | 89.6%  |
+| Crambidae    | 80.5% | 81.0% | **81.8%**  |
+| Erebidae     | 81.2% | 81.7% | 82.0 % |
+| Oecophoridae | 72.7% | 73.0% | 73.9%  |
+| Hesperiidae  | 84.2% | 83.4% | 83.4%  |
+| Pyralidae    | 80.0% | 80.0% | 80.3%  |
+| Nymphalidae  | 87.8% | 88.3% | 88.8%  |
+| Saturniidae  | 91.8% | 92.2% | 92.8%  |
+
+: Accuracy of various frequency cut values
+
+We tuned the same value of the nearZeroVariance function for all of the genus family. Overall the validation set accuracy of 4 models improved after tuning this paramater, indicated by the bold.
+
+## 5 Limitations & Future Directions
+
+Although we achieved high prediction accuracy for the Lepidoptera family
+and genus prediction, there are several limitations. First, almost all
+families have at least 25% of the genus with only 1 sample. During the
+model training stage, there is a certain chance that we lose information
+about these genus because they are not included in model-fitting models.
+Second, the loci information we lack might be especially important to
+classify specific families. When several families are genetically
+similar to each other, kmer might not be sufficient to differentiate
+them. For example, we found that Erebidae and Noctuidae are almost
+entirely mistaken for each other. It's possible that a few nucleotide
+differences at specific locations are key in this case. If more
+computing power is available, increasing the length of kmers to 31 on
+64-bit machines could preserve more sequence information and improve
+accuracy further. If loci information is proven to be central in a
+certain scenario, labeling nucleotides along with their ordering in a
+whole sequence as predictors are also worth considering.
+
+\newpage
+
+## 6 References
