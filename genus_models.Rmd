@@ -1,0 +1,622 @@
+---
+title: "genus_models"
+output: html_document
+date: "2023-02-21"
+---
+
+#genus file
+
+```{r load packages, include=FALSE}
+if (!require(tidyverse)) {
+  install.packages("tidyverse")
+}
+library(tidyverse)
+
+if (!require(ape)) {
+  install.packages("ape")
+}
+library(ape)
+
+if (!require(dplyr)) {
+  install.packages("dplyr")
+}
+library(dplyr)
+
+if (!require(MASS)) {
+  install.packages("MASS")
+}
+library(MASS)
+
+if (!require(kmer)) {
+  install.packages("kmer")
+}
+library(kmer) # Fast K-mer Counting and Clustering for Biological Sequence Analysis.
+
+if (!require(e1071)) {
+  install.packages("e1071")
+}
+library(e1071) # Naive Bayes
+
+if (!require(bioseq)) {
+  install.packages("bioseq")
+}
+library(bioseq)
+
+if (!require(naivebayes)) {
+  install.packages("naivebayes")
+}
+library(naivebayes)
+
+if (!require(caret)) {
+  install.packages("caret")
+}
+library(caret)
+
+if (!require(kernlab)) {
+  install.packages("kernlab")
+}
+library(kernlab)
+
+if (!require(naniar)) {
+  install.packages("naniar")
+}
+library(naniar)
+
+if (!require(glment)) {
+  install.packages("glmnet")
+}
+
+library(glmnet)
+
+if (!require(sparsepca)) {
+  install.packages("sparsepca")
+}
+
+library(sparsepca)
+
+
+if (!require(klaR)) {
+  install.packages("klaR")
+}
+
+library(klaR)
+```
+
+
+```{r}
+genus_data <- readRDS("raw_genus_data.rds")
+```
+
+#Noctuidae 
+
+```{r}
+set.seed(10)
+
+
+noctuidae_data <- genus_data[genus_data$Family == "Noctuidae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(noctuidae_data ), replace=TRUE, prob=c(0.8,0.2))
+noctuidae_train_set  <- noctuidae_data[sample, ]
+noctuidae_test_set  <- noctuidae_data[!sample, ]
+
+low_variance_noctuidae_train <- nearZeroVar(x = noctuidae_train_set)
+noctuidae_train_set <- noctuidae_data[,-low_variance_noctuidae_train]
+
+
+noctuidae_test_genus <- noctuidae_test_set$Genus
+noctuidae_test_set  <- subset(noctuidae_test_set, select = -c(Genus) )
+
+
+
+```
+
+```{r, cache = TRUE}
+#Noctuidae LDA model
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.99))
+
+noctuidae_lda_model <- train(Genus ~., data = noctuidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+
+```
+
+```{r}
+
+noctuidae_predictors <- colnames(noctuidae_train_set)
+saveRDS(noctuidae_predictors, "noctuidae_predictors.rds", compress = "gzip")
+saveRDS(noctuidae_lda_model, "noctuidae_model.rds", compress = "gzip")
+saveRDS(noctuidae_test_set, "noctuidae_model_test_data.rds", compress = "gzip")
+saveRDS(noctuidae_test_genus, "noctuidae_model_test_labels.rds", compress = "gzip")
+```
+
+
+#Geometridae
+
+```{r}
+set.seed(10)
+
+
+geometridae_data <- genus_data[genus_data$Family == "Geometridae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(geometridae_data ), replace=TRUE, prob=c(0.8,0.2))
+geometridae_train_set  <- geometridae_data[sample, ]
+geometridae_test_set  <- geometridae_data[!sample, ]
+
+low_variance_geometridae_train <- nearZeroVar(x = geometridae_train_set)
+geometridae_train_set <- geometridae_train_set[,-low_variance_geometridae_train]
+
+
+geometridae_test_genus <- geometridae_test_set$Genus
+geometridae_test_set  <- subset(geometridae_test_set, select = -c(Genus) )
+
+
+
+```
+
+
+
+```{r, cache = TRUE}
+#Geometridae LDA model
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.99))
+
+geometridae_lda_model <- train(Genus ~., data = geometridae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+
+```
+
+```{r}
+
+geometridae_predictors <- colnames(geometridae_train_set)
+saveRDS(geometridae_predictors, "geometridae_predictors.rds", compress = "gzip")
+saveRDS(geometridae_lda_model, "geometridae_model.rds", compress = "gzip")
+saveRDS(geometridae_test_set, "geometridae_model_test_data.rds", compress = "gzip")
+saveRDS(geometridae_test_genus, "geometridae_model_test_labels.rds", compress = "gzip")
+```
+
+
+
+
+# Gelechiidae
+
+```{r}
+set.seed(10)
+
+
+gelechiidae_data <- genus_data[genus_data$Family == "Gelechiidae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(gelechiidae_data ), replace=TRUE, prob=c(0.8,0.2))
+gelechiidae_train_set  <- gelechiidae_data[sample, ]
+gelechiidae_test_set  <- gelechiidae_data[!sample, ]
+
+low_variance_gelechiidae_train <- nearZeroVar(x = gelechiidae_train_set)
+gelechiidae_train_set <- gelechiidae_train_set[,-low_variance_gelechiidae_train]
+
+
+gelechiidae_test_genus <- gelechiidae_test_set$Genus
+gelechiidae_test_set  <- subset(gelechiidae_test_set, select = -c(Genus) )
+
+
+
+```
+
+
+
+```{r, cache = TRUE}
+#Geometridae LDA model
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.99))
+
+gelechiidae_lda_model <- train(Genus ~., gelechiidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+
+```
+
+
+```{r}
+
+gelechiidae_predictors <- colnames(gelechiidae_train_set)
+saveRDS(gelechiidae_predictors, "gelechiidae_predictors.rds", compress = "gzip")
+saveRDS(gelechiidae_lda_model, "gelechiidae_model.rds", compress = "gzip")
+saveRDS(gelechiidae_test_set, "gelechiidae_model_test_data.rds", compress = "gzip")
+saveRDS(gelechiidae_test_genus, "gelechiidae_model_test_labels.rds", compress = "gzip")
+```
+
+# Sphingidae
+
+
+```{r}
+set.seed(10)
+
+
+sphingidae_data <- genus_data[genus_data$Family == "Sphingidae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(sphingidae_data ), replace=TRUE, prob=c(0.8,0.2))
+sphingidae_train_set  <- sphingidae_data[sample, ]
+sphingidae_test_set  <- sphingidae_data[!sample, ]
+
+low_variance_sphingidae_train <- nearZeroVar(x = sphingidae_train_set)
+sphingidae_train_set <- sphingidae_train_set[,-low_variance_sphingidae_train]
+
+
+sphingidae_test_genus <- sphingidae_test_set$Genus
+sphingidae_test_set  <- subset(sphingidae_test_set, select = -c(Genus) )
+
+
+
+```
+
+
+
+```{r, cache = TRUE}
+#Sphingidae LDA model
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.9))
+
+sphingidae_lda_model <- train(Genus ~., data = sphingidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+
+```
+
+```{r}
+
+sphingidae_predictors <- colnames(sphingidae_train_set)
+saveRDS(sphingidae_predictors, "sphingidae_predictors.rds", compress = "gzip")
+saveRDS(sphingidae_lda_model, "sphingidae_model.rds", compress = "gzip")
+saveRDS(sphingidae_test_set, "sphingidae_model_test_data.rds", compress = "gzip")
+saveRDS(sphingidae_test_genus, "sphingidae_model_test_labels.rds", compress = "gzip")
+```
+
+#Tortricidae
+
+```{r}
+tortricidae_data <- genus_data[genus_data$Family == "Tortricidae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(tortricidae_data ), replace=TRUE, prob=c(0.8,0.2))
+tortricidae_train_set  <- tortricidae_data[sample, ]
+tortricidae_test_set  <- tortricidae_data[!sample, ]
+
+low_variance_tortricidae_train <- nearZeroVar(x = tortricidae_train_set)
+tortricidae_train_set <- tortricidae_train_set[,-low_variance_tortricidae_train]
+
+tortricidae_test_genus <- tortricidae_test_set$Genus
+tortricidae_set  <- subset(tortricidae_test_set, select = -c(Genus) )
+```
+
+```{r}
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.95))
+
+tortricidae_lda_model <- train(Genus ~., data = tortricidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+```
+
+```{r}
+tortricidae_predictors <- colnames(tortricidae_train_set)
+saveRDS(tortricidae_predictors, "tortricidae_predictors.rds", compress = "gzip")
+saveRDS(tortricidae_lda_model, "tortricidae_model.rds", compress = "gzip")
+saveRDS(tortricidae_test_set, "tortricidae_model_test_data.rds", compress = "gzip")
+saveRDS(tortricidae_test_genus, "tortricidae_model_test_labels.rds", compress = "gzip")
+```
+
+
+# Crambidae
+
+```{r}
+set.seed(10)
+
+
+crambidae_data <- genus_data[genus_data$Family == "Crambidae",]
+
+sample <- sample(c(TRUE, FALSE), nrow(crambidae_data ), replace=TRUE, prob=c(0.8,0.2))
+crambidae_train_set  <- crambidae_data[sample, ]
+crambidae_test_set  <- crambidae_data[!sample, ]
+
+low_variance_crambidae_train <- nearZeroVar(x = crambidae_train_set)
+crambidae_train_set <- crambidae_train_set[,-low_variance_crambidae_train]
+# ^ important reference
+
+crambidae_test_genus <- crambidae_test_set$Genus
+crambidae_test_set  <- subset(crambidae_test_set, select = -c(Genus) )
+```
+
+```{r}
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.99))
+
+crambidae_lda_model <- train(Genus ~., data = crambidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+```
+
+```{r}
+crambidae_predictors <- colnames(crambidae_train_set)
+saveRDS(crambidae_predictors, "crambidae_predictors.rds", compress = "gzip")
+saveRDS(crambidae_lda_model, "crambidae_model.rds", compress = "gzip")
+saveRDS(crambidae_test_set, "crambidae_model_test_data.rds", compress = "gzip")
+saveRDS(crambidae_test_genus, "crambidae_model_test_labels.rds", compress = "gzip")
+```
+
+# Erbidae
+
+```{r}
+set.seed(10)
+
+
+erebidae_data <- genus_data[genus_data$Family == "Erebidae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(erebidae_data ), replace=TRUE, prob=c(0.8,0.2))
+erebidae_train_set  <- erebidae_data[sample, ]
+erebidae_test_set  <- erebidae_data[!sample, ]
+
+low_variance_erebidae_train <- nearZeroVar(x = erebidae_train_set)
+erebidae_train_set <- erebidae_train_set[,-low_variance_erebidae_train]
+
+
+erebidae_test_genus <- erebidae_test_set$Genus
+erebidae_set  <- subset(erebidae_test_set, select = -c(Genus) )
+```
+
+```{r}
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.90))
+
+erebidae_lda_model <- train(Genus ~., data = erebidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+```
+
+```{r}
+erebidae_predictors <- colnames(erebidae_train_set)
+saveRDS(erebidae_predictors, "erebidae_predictors.rds", compress = "gzip")
+saveRDS(erebidae_lda_model, "erebidae_model.rds", compress = "gzip")
+saveRDS(erebidae_test_set, "erebidae_model_test_data.rds", compress = "gzip")
+saveRDS(erebidae_test_genus, "erebidae_model_test_labels.rds", compress = "gzip")
+```
+
+#Oecophoridae 
+
+```{r}
+set.seed(10)
+
+
+oecophoridae_data <- genus_data[genus_data$Family == "Oecophoridae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(oecophoridae_data ), replace=TRUE, prob=c(0.8,0.2))
+oecophoridae_train_set  <- oecophoridae_data[sample, ]
+oecophoridae_test_set  <- oecophoridae_data[!sample, ]
+
+low_variance_oecophoridae_train <- nearZeroVar(x = oecophoridae_train_set)
+oecophoridae_train_set <- oecophoridae_train_set[,-low_variance_oecophoridae_train]
+
+
+oecophoridae_test_genus <- oecophoridae_test_set$Genus
+oecophoridae_test_set  <- subset(oecophoridae_test_set, select = -c(Genus) )
+
+
+
+```
+
+
+
+```{r, cache = TRUE}
+#Oecophoridae LDA model
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.90))
+
+oecophoridae_lda_model <- train(Genus ~., data = oecophoridae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+
+```
+
+```{r}
+
+oecophoridae_predictors <- colnames(oecophoridae_train_set)
+saveRDS(oecophoridae_predictors, "oecophoridae_predictors.rds", compress = "gzip")
+saveRDS(oecophoridae_lda_model, "oecophoridae_model.rds", compress = "gzip")
+saveRDS(oecophoridae_test_set, "oecophoridae_model_test_data.rds", compress = "gzip")
+saveRDS(oecophoridae_test_genus, "oecophoridae_model_test_labels.rds", compress = "gzip")
+```
+
+# Hesperiidae 
+
+```{r}
+set.seed(10)
+
+
+hesperiidae_data <- genus_data[genus_data$Family == "Hesperiidae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(hesperiidae_data ), replace=TRUE, prob=c(0.8,0.2))
+hesperiidae_train_set  <- hesperiidae_data[sample, ]
+hesperiidae_test_set  <- hesperiidae_data[!sample, ]
+
+low_variance_hesperiidae_train <- nearZeroVar(x = hesperiidae_train_set)
+hesperiidae_train_set <- hesperiidae_train_set[,-low_variance_hesperiidae_train]
+
+
+hesperiidae_test_genus <- hesperiidae_test_set$Genus
+hesperiidae_test_set  <- subset(hesperiidae_test_set, select = -c(Genus) )
+
+
+
+```
+
+
+
+```{r, cache = TRUE}
+#Geometridae LDA model
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.95))
+
+hesperiidae_lda_model <- train(Genus ~., data = hesperiidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+
+```
+
+```{r}
+
+hesperiidae_predictors <- colnames(geometridae_train_set)
+saveRDS(hesperiidae_predictors, "hesperiidae_predictors.rds", compress = "gzip")
+saveRDS(hesperiidae_lda_model, "hesperiidae_model.rds", compress = "gzip")
+saveRDS(hesperiidae_test_set, "hesperiidae_model_test_data.rds", compress = "gzip")
+saveRDS(hesperiidae_test_genus, "hesperiidae_model_test_labels.rds", compress = "gzip")
+```
+
+
+# Pyralidae
+
+```{r}
+set.seed(10)
+
+
+pyralidae_data <- genus_data[genus_data$Family == "Pyralidae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(pyralidae_data ), replace=TRUE, prob=c(0.8,0.2))
+pyralidae_train_set  <- pyralidae_data[sample, ]
+pyralidae_test_set  <- pyralidae_data[!sample, ]
+
+low_variance_pyralidae_train <- nearZeroVar(x = pyralidae_train_set)
+pyralidae_train_set <-pyralidae_train_set[,-low_variance_pyralidae_train]
+
+
+pyralidae_test_genus <- pyralidae_test_set$Genus
+pyralidae_test_set  <- subset(pyralidae_test_set, select = -c(Genus) )
+```
+
+```{r}
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.99))
+
+pyralidae_lda_model <- train(Genus ~., data = pyralidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+```
+
+```{r}
+
+pyralidae_predictors <- colnames(pyralidae_train_set)
+saveRDS(pyralidae_predictors, "pyralidae_predictors.rds", compress = "gzip")
+saveRDS(pyralidae_lda_model, "pyralidae_model.rds", compress = "gzip")
+saveRDS(pyralidae_test_set, "pyralidae_model_test_data.rds", compress = "gzip")
+saveRDS(pyralidae_test_genus, "pyralidae_model_test_labels.rds", compress = "gzip")
+```
+
+
+# Nymphalidae
+
+
+```{r}
+set.seed(10)
+
+
+nymphalidae_data <- genus_data[genus_data$Family == "Nymphalidae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(nymphalidae_data), replace=TRUE, prob=c(0.8,0.2))
+nymphalidae_train_set  <- nymphalidae_data[sample, ]
+nymphalidae_test_set  <- nymphalidae_data[!sample, ]
+
+low_variance_nymphalidae_train <- nearZeroVar(x = nymphalidae_train_set)
+nymphalidae_train_set <-nymphalidae_train_set[,-low_variance_nymphalidae_train]
+
+
+nymphalidae_test_genus <- nymphalidae_test_set$Genus
+nymphalidae_test_set  <- subset(nymphalidae_test_set, select = -c(Genus) )
+```
+
+```{r}
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.90))
+
+nymphalidae_lda_model <- train(Genus ~., data = nymphalidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+```
+
+```{r}
+
+nymphalidae_predictors <- colnames(nymphalidae_train_set)
+saveRDS(nymphalidae_predictors, "nymphalidae_predictors.rds", compress = "gzip")
+saveRDS(nymphalidae_lda_model, "nymphalidae_model.rds", compress = "gzip")
+saveRDS(nymphalidae_test_set, "nymphalidae_model_test_data.rds", compress = "gzip")
+saveRDS(nymphalidae_test_genus, "nymphalidae_model_test_labels.rds", compress = "gzip")
+```
+
+# Saturniidae
+
+```{r}
+set.seed(10)
+
+
+saturniidae_data <- genus_data[genus_data$Family == "Saturniidae",]
+
+
+sample <- sample(c(TRUE, FALSE), nrow(saturniidae_data ), replace=TRUE, prob=c(0.8,0.2))
+saturniidae_train_set  <- saturniidae_data[sample, ]
+saturniidae_test_set  <- saturniidae_data[!sample, ]
+
+low_variance_saturniidae_train <- nearZeroVar(x = saturniidae_train_set)
+saturniidae_train_set <-saturniidae_train_set[,-low_variance_saturniidae_train]
+
+
+saturniidae_test_genus <- saturniidae_test_set$Genus
+saturniidae_test_set  <- subset(saturniidae_test_set, select = -c(Genus) )
+```
+
+```{r}
+train_control <- trainControl(method = "none",
+                              preProcOptions = c(thresh = 0.75))
+
+saturniidae_lda_model <- train(Genus ~., data = saturniidae_train_set, 
+               method = "lda",
+               trControl = train_control,
+               metric = "Accuracy", 
+               preProcess=c("pca"))
+```
+
+```{r}
+
+saturniidae_predictors <- colnames(saturniidae_train_set)
+saveRDS(saturniidae_predictors, "saturniidae_predictors.rds", compress = "gzip")
+saveRDS(saturniidae_lda_model, "saturniidae_model.rds", compress = "gzip")
+saveRDS(saturniidae_test_set, "saturniidae_model_test_data.rds", compress = "gzip")
+saveRDS(saturniidae_test_genus, "saturniidae_model_test_labels.rds", compress = "gzip")
+```

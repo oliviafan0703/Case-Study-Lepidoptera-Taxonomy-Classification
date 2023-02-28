@@ -1,0 +1,75 @@
+---
+title: "new_test_predictions"
+output: html_document
+date: "2023-02-20"
+---
+
+```{r}
+test_sequences <- read_csv("Case_study2_Lepidoptera/test_sequences.csv", show_col_types = FALSE)
+```
+
+```{r}
+#find 1-6 kmer counts
+DNAmat <- str_split(test_sequences$DNA, pattern = "", simplify = T)
+bin <- as.DNAbin(DNAmat)
+bin <- solveAmbiguousBases(bin)
+
+#kmer counts
+kmers_1 <- kcount(x = bin, k = 1)
+
+kmers_2 <- kcount(x = bin, k = 2)
+
+kmers_3 <- kcount(x = bin, k = 3)
+
+kmers_4 <- kcount(x = bin, k = 4)
+
+kmers_5 <- kcount(x = bin, k = 5)
+
+kmers_6 <- kcount(x = bin, k = 6)
+
+
+
+
+new_kmer_data <- data.frame(cbind(kmers_1, kmers_2,kmers_3, kmers_4, kmers_5, kmers_6)) 
+rm(bin, DNAmat,kmers_1, kmers_2, kmers_3, kmers_4, kmers_5, kmers_6) 
+```
+
+# Predict Family
+```{r}
+#load lda model
+family_lda_model <- readRDS("final_lda_family_model.rds")
+```
+
+
+```{r}
+#filter for lda predictors
+family_model_predictors <- readRDS("family_model_predictors.rds")
+new_kmer_data <- subset(new_kmer_data,select = names(new_kmer_data) %in% family_model_predictors)
+```
+
+```{r, cache = TRUE}
+#find lda model predictions
+lda_model_predictions_prob <- predict(family_lda_model, newdata = new_kmer_data, type = "prob")
+family <- predict(family_lda_model, newdata = new_kmer_data)
+```
+
+```{r}
+#check predictions
+probability <- apply(lda_model_predictions_prob, 1, max, na.rm=TRUE)
+class_and_probabilities <- cbind(as.data.frame(family), probability)
+class_and_probabilities$family <- as.character(class_and_probabilities$family)
+```
+
+```{r}
+class_and_probabilities$family
+```
+
+
+```{r}
+predictions <- class_and_probabilities %>%
+  mutate(family = ifelse(probability < 0.8, "New Species", family))
+  
+predictions %>% count(family == "New Species")
+```
+
+hello
