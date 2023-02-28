@@ -43,10 +43,10 @@ Make sure you address the following questions (variable selection methods can be
 # Data
 Data for this case study are available on the STA 440L container as well as on Sakai. There are two datasets:
 
-Lepidoptera_library.csv: a dataset of 40000 DNA sequences and their annotations. You can ignore the species column, since we are interested in only family and genus
+- Lepidoptera_library.csv: a dataset of 40000 DNA sequences and their annotations. You can ignore the species column, since we are interested in only family and genus
 
-test_sequences.csv: 7000 test DNA sequences. No affiliation is reported, so your job is to predict both family and genus, and also to verify if some DNA sequences correspond to “new” species (if you want extra points).
+- test_sequences.csv: 7000 test DNA sequences. No affiliation is reported, so your job is to predict both family and genus, and also to verify if some DNA sequences correspond to “new” species (if you want extra points).
 
-The DNA sequence is constructed so that loci are comparable. However, alignnment comes with some problems. For example, some loci will not have the classic A, C, G and T letters, but might have alignemnt gaps - or other special characters. It is up to you how to deal with these terms, as long as you justify yorur choice.
+- The DNA sequence is constructed so that loci are comparable. However, alignnment comes with some problems. For example, some loci will not have the classic A, C, G and T letters, but might have alignemnt gaps - or other special characters. It is up to you how to deal with these terms, as long as you justify yorur choice.
 
 
